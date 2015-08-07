@@ -43,13 +43,16 @@ message ColumnFamilySchema {
 message TableSchema {
     optional int32 id = 1;
     optional string name = 2;
-    optional int32 owner = 3;
-    repeated int32 acl = 4;
+    optional int32 owner = 3; // but why int32? XXX
+    repeated int32 acl = 4;   // so, 
     repeated ColumnFamilySchema column_families = 5;
     repeated LocalityGroupSchema locality_groups = 6;
     optional RawKey raw_key = 7 [default = Readable];
     optional int64 split_size = 8; // MB
     optional int64 merge_size = 10; // MB
     optional bool kv_only = 9 [default = false];
+    optional string acl_owner = 11; // acl
+    optional string acl_group = 12; // acl
+    optional int32 permissions = 13; // default: -RWAR--R-- (just link Linux file permissions)
 }
 

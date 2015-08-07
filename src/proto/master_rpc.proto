@@ -8,11 +8,18 @@ package tera;
 
 // Table operation
 
+message UserInfo {
+    required string user_name = 1;
+    repeated string group_name = 2;
+    optional string password = 3; // TODO no plain text
+}
+
 message CreateTableRequest {
     required uint64 sequence_id = 1;
     required string table_name = 2;
     optional TableSchema schema = 3;
     repeated bytes delimiters = 6;
+    optional UserInfo caller = 7;
 }
 
 message CreateTableResponse {
@@ -24,6 +31,7 @@ message CreateTableResponse {
 message DeleteTableRequest {
     required uint64 sequence_id = 1;
     required string table_name = 2;
+    optional UserInfo caller = 3;
 }
 
 message DeleteTableResponse {
@@ -34,6 +42,7 @@ message DeleteTableResponse {
 message DisableTableRequest {
     required uint64 sequence_id = 1;
     required string table_name = 2;
+    optional UserInfo caller = 3;
 }
 
 message DisableTableResponse {
@@ -44,6 +53,7 @@ message DisableTableResponse {
 message EnableTableRequest {
     required uint64 sequence_id = 1;
     required string table_name = 2;
+    optional UserInfo caller = 3;
 }
 
 message EnableTableResponse {
@@ -55,6 +65,7 @@ message UpdateTableRequest {
     required uint64 sequence_id = 1;
     required string table_name = 2;
     optional TableSchema schema = 3;
+    optional UserInfo caller = 4;
 }
 
 message UpdateTableResponse {
@@ -174,12 +185,60 @@ message CmdCtrlResponse {
     optional string str_result = 4;
 }
 
+// acl
+/*
+message CreateUserRequest {
+    required uint64 sequence_id = 1;
+    required UserInfo caller = 2;
+    required UserInfo created_user = 3;
+}
+
+message CreateUserResponse {
+    required uint64 sequence_id = 1;
+    required StatusCode status = 2;
+}
+
+message DeleteUserRequest {
+    required uint64 sequence_id = 1;
+    optional UserInfo caller = 2;
+    optional UserInfo deleted_user = 3;
+}
+
+message DeleteUserResponse {
+    required uint64 sequence_id = 1;
+    required StatusCode status = 2;
+}
+
+message UpdateUserRequest {
+    required uint64 sequence_id = 1;
+    optional UserInfo caller = 2;
+    optional UserInfo updated_user = 3;
+}
+
+message UpdateUserResponse {
+    required uint64 sequence_id = 1;
+    required StatusCode status = 2;
+}
+
+message ListUserRequest {
+    required uint64 sequence_id = 1;
+    optional UserInfo caller = 2;
+}
+
+message ListUserResponse {
+    required uint64 sequence_id = 1;
+    required StatusCode status = 2;
+    repeated UserInfo user_list = 3;
+}
+*/
+
 // RPC interface
 
 service MasterServer {
     rpc GetSnapshot(GetSnapshotRequest) returns(GetSnapshotResponse);
     rpc DelSnapshot(DelSnapshotRequest) returns(DelSnapshotResponse);
     rpc CreateTable(CreateTableRequest) returns(CreateTableResponse);
+    //rpc CreateUser(CreateUserRequest) returns(CreateUserResponse);
     rpc DeleteTable(DeleteTableRequest) returns (DeleteTableResponse);
     rpc DisableTable(DisableTableRequest) returns (DisableTableResponse);
     rpc EnableTable(EnableTableRequest) returns (EnableTableResponse);

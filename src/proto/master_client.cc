@@ -47,6 +47,16 @@ bool MasterClient::CreateTable(const CreateTableRequest* request,
                                 "CreateTable", m_rpc_timeout);
 }
 
+/*
+bool MasterClient::CreateUser(const CreateUserRequest* request,
+                               CreateUserResponse* response) {
+    return SendMessageWithRetry(&MasterServer::Stub::CreateUser,
+                                request, response,
+                                (Closure<void, CreateUserRequest*, CreateUserResponse*, bool, int>*)NULL,
+                                "CreateUser", m_rpc_timeout);
+}  
+*/
+
 bool MasterClient::DeleteTable(const DeleteTableRequest* request,
                                DeleteTableResponse* response) {
     return SendMessageWithRetry(&MasterServer::Stub::DeleteTable,

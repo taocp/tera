@@ -662,6 +662,20 @@ public:
                          std::string* str_result,
                          ErrorCode* err) = 0;
 
+    /// acl
+    /// 创建用户（只有root有此权限）
+    /// virtual bool CreateUser(const std::string& user, const std::string& group, 
+    ///                            const std::string& password, ErrorCode* err) = 0;
+    /// 删除用户（只有root有此权限）
+    //virtual bool DeleteUser(const std::string& user, ErrorCode* err) = 0;
+    /// 更新用户密码（root和该用户本身有此权限）
+    //virtual bool UpdateUser(const std::string& user, const std::string& password, ErrorCode* err) = 0;
+    /// 列出所有可见用户
+    //virtual bool ListUser(ErrorCode* err) = 0;
+    /// TODO
+    /// AddUserToGroup()
+    /// DeleteUserFromGroup()
+
     Client() {}
     virtual ~Client() {}
 

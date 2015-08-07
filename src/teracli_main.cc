@@ -18,6 +18,7 @@
 #include "common/base/string_number.h"
 #include "common/file/file_path.h"
 #include "io/coding.h"
+#include "proto/master_rpc.pb.h"
 #include "proto/kv_helper.h"
 #include "proto/proto_helper.h"
 #include "proto/tabletnode.pb.h"
@@ -72,6 +73,8 @@ void Usage(const std::string& prg_name) {
                     tablename{cf1, cf2, cf3, ...}                           \n\
                                                                             \n\
        createbyfile   <schema_file> [<delimiter_file>]                      \n\
+                                                                            \n\
+       createuser username groupname password                               \n\
                                                                             \n\
        update <schema>                                                      \n\
               - kv schema:                                                  \n\
@@ -162,6 +165,7 @@ void UsageMore(const std::string& prg_name) {
                                                                             \n\
        version\n\n";
 }
+
 int32_t CreateOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     if (argc < 2) {
         Usage(argv[0]);
@@ -211,6 +215,22 @@ int32_t CreateOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     ShowTableDescriptor(table_desc);
     return 0;
 }
+
+/*
+int32_t CreateUserOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
+    if (argc != 5) {
+        Usage(argv[0]);
+        return -1;
+    }
+    // TODO check invalid/illegal char
+    if (!client->CreateUser(argv[2], argv[3], argv[4], err)) {
+        LOG(ERROR) << "fail to create user: " << argv[1]
+            << ", " << strerr(*err);
+        return -1;
+    }
+    return 0;
+}
+*/
 
 int32_t CreateByFileOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     if (argc < 3) {
@@ -2053,6 +2073,10 @@ int32_t Meta2Op(Client *client, int32_t argc, char** argv) {
             char first_key_char = record.key()[0];
             if (first_key_char == '@') {
                 ParseMetaTableKeyValue(record.key(), record.value(), table_list.add_meta());
+            } else if (first_key_char == '^') {
+                tera::UserInfo user_info;
+                user_info.ParseFromString(record.value());
+                std::cout << "(user: " << record.key() << " " << user_info.group_name(0) << ")" << std::endl;
             } else if (first_key_char > '@') {
                 ParseMetaTableKeyValue(record.key(), record.value(), tablet_list.add_meta());
             } else {

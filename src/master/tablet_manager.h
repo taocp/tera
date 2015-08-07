@@ -206,7 +206,9 @@ public:
     void Init();
     void Stop();
 
-    bool LoadMetaTable(const std::string& addr, StatusCode* ret_status = NULL);
+    bool LoadMetaTable(const std::string& addr,
+                       //std::map<std::string, std::string>& user2password, 
+                       StatusCode* ret_status = NULL);
     bool DumpMetaTable(const std::string& addr, StatusCode* ret_status = NULL);
     bool ClearMetaTable(const std::string& addr, StatusCode* ret_status = NULL);
 

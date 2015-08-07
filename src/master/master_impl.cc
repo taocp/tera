@@ -11,7 +11,6 @@
 #include <glog/logging.h>
 #include <gperftools/malloc_extension.h>
 
-
 #include "db/filename.h"
 #include "io/io_utils.h"
 #include "io/utils_leveldb.h"
@@ -90,6 +89,9 @@ DECLARE_bool(tera_ins_enabled);
 
 DECLARE_int64(tera_sdk_perf_counter_log_interval);
 
+DECLARE_bool(tera_acl_enabled);
+DECLARE_string(tera_master_root_password);
+
 namespace tera {
 namespace master {
 
@@ -110,7 +112,8 @@ MasterImpl::MasterImpl()
       m_stat_table(NULL),
       m_gc_enabled(false),
       m_gc_timer_id(kInvalidTimerId),
-      m_gc_query_enable(false) {
+      m_gc_query_enable(false),
+      m_root_password(FLAGS_tera_master_root_password) {
     if (FLAGS_tera_master_cache_check_enabled) {
         EnableReleaseCacheTimer();
     }
@@ -459,6 +462,17 @@ void MasterImpl::CreateTable(const CreateTableRequest* request,
         return;
     }
 
+    // check permission
+    if (!FLAGS_tera_acl_enabled ||
+        (request->has_caller() && CheckPermission(request->caller()))) {
+        LOG(ERROR) << "is acl enabled: " << FLAGS_tera_acl_enabled;
+    } else {
+        LOG(ERROR) << "fail to create table: " << request->table_name();
+        response->set_status(kNotPermission);
+        done->Run();
+        return;
+    }
+
     {
         TablePtr table;
         if (m_tablet_manager->FindTable(request->table_name(), &table)) {
@@ -545,10 +559,64 @@ void MasterImpl::CreateTable(const CreateTableRequest* request,
     return;
 }
 
+/*
+void MasterImpl::CreateUser(const CreateUserRequest* request,
+                 CreateUserResponse* response,
+                 google::protobuf::Closure* done) {
+    response->set_sequence_id(request->sequence_id());
+    MasterStatus master_status = GetMasterStatus();
+    if (master_status != kIsRunning) {
+        LOG(ERROR) << "master is not ready, m_status = "
+            << StatusCodeToString(master_status);
+        response->set_status(static_cast<StatusCode>(master_status));
+        done->Run();
+        return;
+    }
+    UserInfo caller = request->caller(); // TODO imutable?
+    UserInfo created_user = request->created_user();
+    if (!caller.has_user_name() || !caller.has_password()
+        || !created_user.has_user_name() || created_user.group_name_size() != 1
+        || !created_user.has_password()){
+        response->set_status(kTableInvalidArg);
+        LOG(ERROR) << "user: " << caller.user_name() << " try to create user:"
+            << created_user.user_name();
+        done->Run();
+        return;
+    }
+    std::string user = caller.has_user_name() ? caller.user_name() : "";
+    std::string password = caller.has_password() ? caller.password() : "";
+    if (!IsRootUser(user, password)) {
+        response->set_status(kNotPermission);
+        LOG(ERROR) << "user: " << user << " try to create user:"
+            << created_user.user_name();
+        done->Run();
+        return;
+    }
+    // if already exists?
+
+    // add user to meta-table    
+    WriteClosure* closure = 
+        NewClosure(this, &MasterImpl::AddUserInfoToMetaCallback, created_user, request, response, done);
+    WriteUserInfoToMetaTableAsync(created_user, closure, response, done);
+}
+*/
+
 void MasterImpl::DeleteTable(const DeleteTableRequest* request,
                              DeleteTableResponse* response,
                              google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
+
+    // check permission
+    if (!FLAGS_tera_acl_enabled ||
+        (request->has_caller() && CheckPermission(request->caller()))) {
+        LOG(ERROR) << "is acl enabled: " << FLAGS_tera_acl_enabled;
+    } else {
+        LOG(ERROR) << "fail to delete table: " << request->table_name();
+        response->set_status(kNotPermission);
+        done->Run();
+        return;
+    }
+
     MasterStatus master_status = GetMasterStatus();
     if (master_status != kIsRunning) {
         LOG(ERROR) << "master is not ready, m_status = "
@@ -596,10 +664,29 @@ void MasterImpl::DeleteTable(const DeleteTableRequest* request,
     }
 }
 
+bool MasterImpl::CheckPermission(const UserInfo& user_info) {
+    std::string name = user_info.has_user_name() ? user_info.user_name() : "";
+    std::string password = user_info.has_password() ? user_info.password() : "";
+    LOG(ERROR) << "user name:" << name;
+    return name == "root" && password == m_root_password;
+}
+
 void MasterImpl::DisableTable(const DisableTableRequest* request,
                               DisableTableResponse* response,
                               google::protobuf::Closure* done) {
     response->set_sequence_id(request->sequence_id());
+
+    // check permission
+    if (!FLAGS_tera_acl_enabled ||
+        (request->has_caller() && CheckPermission(request->caller()))) {
+        LOG(ERROR) << "is acl enabled: " << FLAGS_tera_acl_enabled;
+    } else {
+        LOG(ERROR) << "fail to disable table: " << request->table_name();
+        response->set_status(kNotPermission);
+        done->Run();
+        return;
+    }
+
     MasterStatus master_status = GetMasterStatus();
     if (master_status != kIsRunning) {
         LOG(ERROR) << "master is not ready, m_status = "
@@ -663,6 +750,17 @@ void MasterImpl::EnableTable(const EnableTableRequest* request,
         return;
     }
 
+    // check permission
+    if (!FLAGS_tera_acl_enabled ||
+        (request->has_caller() && CheckPermission(request->caller()))) {
+        LOG(ERROR) << "is acl enabled: " << FLAGS_tera_acl_enabled;
+    } else {
+        LOG(ERROR) << "fail to enable table: " << request->table_name();
+        response->set_status(kNotPermission);
+        done->Run();
+        return;
+    }
+
     TablePtr table;
     if (!m_tablet_manager->FindTable(request->table_name(), &table)) {
         LOG(ERROR) << "fail to enable table: " << request->table_name()
@@ -706,6 +804,17 @@ void MasterImpl::UpdateTable(const UpdateTableRequest* request,
         LOG(ERROR) << "master is not ready, m_status = "
             << StatusCodeToString(master_status);
         response->set_status(static_cast<StatusCode>(master_status));
+        done->Run();
+        return;
+    }
+
+    // check permission
+    if (!FLAGS_tera_acl_enabled ||
+        (request->has_caller() && CheckPermission(request->caller()))) {
+        LOG(ERROR) << "is acl enabled: " << FLAGS_tera_acl_enabled;
+    } else {
+        LOG(ERROR) << "fail to update table: " << request->table_name();
+        response->set_status(kNotPermission);
         done->Run();
         return;
     }
@@ -3473,6 +3582,44 @@ void MasterImpl::WriteMetaTableAsync(TablePtr table, TabletPtr tablet,
     BatchWriteMetaTableAsync(table, tablets, is_delete, done);
 }
 
+/*
+void MasterImpl::WriteUserInfoToMetaTableAsync(UserInfo& user_info, WriteClosure* done,
+                                               CreateUserResponse* rpc_response,
+                                               google::protobuf::Closure* rpc_done) {
+    VLOG(5) << "WriteUserInfoToMetaTableAsync()";
+    std::string meta_addr;
+    if (!m_tablet_manager->GetMetaTabletAddr(&meta_addr)) {
+        LOG(INFO) << "fail to add user: " << user_info.user_name();
+        rpc_response->set_status(kMetaTabletError);
+        rpc_done->Run();
+        return;
+    }
+
+    WriteTabletRequest* request = new WriteTabletRequest;
+    WriteTabletResponse* response = new WriteTabletResponse;
+    request->set_sequence_id(m_this_sequence_id.Inc());
+    request->set_tablet_name(FLAGS_tera_master_meta_table_name);
+    request->set_is_sync(true);
+    request->set_is_instant(true);
+
+    std::string packed_key = "^" + user_info.user_name();
+    LOG(ERROR) << "packed_key: " << packed_key;
+    std::string packed_value;
+    user_info.SerializeToString(&packed_value);
+    //LOG(ERROR) << "packed_value: " << packed_value;
+    RowMutationSequence* mu_seq = request->add_row_list();
+    mu_seq->set_row_key(packed_key);
+    Mutation* mutation = mu_seq->add_mutation_sequence();
+    mutation->set_type(kPut);
+    mutation->set_value(packed_value);
+
+    LOG(INFO) << "WriteUserInfoToMetaTableAsync id: " << request->sequence_id()
+        << ", user: " << user_info.user_name();
+    tabletnode::TabletNodeClient meta_node_client(meta_addr);
+    meta_node_client.WriteTablet(request, response, done);
+}
+*/
+
 void MasterImpl::BatchWriteMetaTableAsync(TablePtr table,
                                           const std::vector<TabletPtr>& tablets,
                                           bool is_delete, WriteClosure* done) {
@@ -3537,6 +3684,38 @@ void MasterImpl::BatchWriteMetaTableAsync(TablePtr table,
     tabletnode::TabletNodeClient meta_node_client(meta_addr);
     meta_node_client.WriteTablet(request, response, done);
 }
+
+/*
+void MasterImpl::AddUserInfoToMetaCallback(UserInfo user_info,
+                                           const CreateUserRequest* rpc_request,
+                                           CreateUserResponse* rpc_response,
+                                           google::protobuf::Closure* rpc_done,
+                                           WriteTabletRequest* request,
+                                           WriteTabletResponse* response,
+                                           bool rpc_failed, int error_code) {
+    StatusCode status = response->status();
+
+    if (!rpc_failed && status == kTabletNodeOk) {
+        rpc_response->set_status(kMasterOk);
+        rpc_done->Run();
+        LOG(ERROR) << "create user: " << user_info.user_name() << " success";
+        return;
+    }
+
+    // no retry
+    if (rpc_failed) {
+        LOG(ERROR) << "fail to add to meta tablet: "
+            << sofa::pbrpc::RpcErrorCodeToString(error_code)
+            << ", user: " << user_info.user_name() << "...";
+    } else {
+        LOG(ERROR) << "fail to add to meta tablet: "
+            << StatusCodeToString(status) << ", user: " << user_info.user_name() << "...";
+    }
+    
+    rpc_response->set_status(kMetaTabletError);
+    rpc_done->Run();
+}
+*/
 
 void MasterImpl::AddMetaCallback(TablePtr table,
                                  std::vector<TabletPtr> tablets,

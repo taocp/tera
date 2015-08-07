@@ -1250,6 +1250,24 @@ bool TabletManager::LoadMetaTable(const std::string& meta_tablet_addr,
             const KeyValuePair& record = response.results().key_values(i);
             last_record_key = record.key();
             char first_key_char = record.key()[0];
+            /*
+            if (first_key_char == '^') {
+                std::string raw_user = record.key();
+                std::string user = raw_user.substr(raw_user.find('^') + 1);
+                std::map<std::string, std::string>::iterator it = user2password.find(user);
+                if (it != user2password.end()) {
+                    LOG(ERROR) << "user: " << user << " already exists.";
+                }
+                UserInfo user_info;
+                user_info.ParseFromString(record.value());
+                user2password.insert(
+                        std::pair<std::string, std::string>(user, user_info.password()));
+                // TODO group
+                LOG(ERROR) << "add (user: " << user << " " << user_info.password() << ")";
+                if (user == "root") {
+                    found_root = true;
+                }
+            } else   */
             if (first_key_char == '@') {
                 LoadTableMeta(record.key(), record.value());
             } else if (first_key_char > '@') {

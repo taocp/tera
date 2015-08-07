@@ -326,6 +326,12 @@ private:
     void BatchWriteMetaTableAsync(TablePtr table,
                                   const std::vector<TabletPtr>& tablets,
                                   bool is_delete, WriteClosure* done);
+    
+    /*
+    void WriteUserInfoToMetaTableAsync(UserInfo& user_info, WriteClosure* done,
+                                       CreateUserResponse* rpc_response,
+                                       google::protobuf::Closure* rpc_done);
+    */
     void AddMetaCallback(TablePtr table, std::vector<TabletPtr> tablets,
                          int32_t retry_times,
                          const CreateTableRequest* rpc_request,
@@ -334,6 +340,16 @@ private:
                          WriteTabletRequest* request,
                          WriteTabletResponse* response,
                          bool failed, int error_code);
+    /*
+    void AddUserInfoToMetaCallback(UserInfo user_info,
+                                   const CreateUserRequest* rpc_request,
+                                   CreateUserResponse* rpc_response,
+                                   google::protobuf::Closure* rpc_done,
+                                   WriteTabletRequest* request,
+                                   WriteTabletResponse* response,
+                                   bool rpc_failed, int error_code);
+    */
+
     void UpdateTableRecordForDisableCallback(TablePtr table, int32_t retry_times,
                                              DisableTableResponse* rpc_response,
                                              google::protobuf::Closure* rpc_done,
@@ -452,6 +468,9 @@ private:
     void DeleteObsoleteFiles();
     void ProcessQueryCallbackForGc(QueryResponse* response);
 
+    // acl
+    bool CheckPermission(const UserInfo& user_info);
+
 private:
     mutable Mutex m_status_mutex;
     MasterStatus m_status;
@@ -506,6 +525,10 @@ private:
     std::set<std::string> m_gc_tabletnodes;
     int64_t m_gc_timer_id;
     bool m_gc_query_enable;
+
+    // acl
+    std::string m_root_password;
+    //std::map<std::string, std::string> m_user2password;
 };
 
 } // namespace master
