@@ -48,4 +48,9 @@ string acl;  //是否可以在集群中建表（每次建表都需要root是否�
 （表格ACL和用户信息）副本由master写入nexus或zk，可以预见数据量不会太大。
 Ts对以上数据执行watch，只有在更新时才会重新访问meta表，或者向master请求数据？
 
+nexus/zk中存储：
+
+1. acl目录下有一个叶子结点user，存储所有用户信息；
+1. acl目录下再有一个tables目录结点，其下很多子结点，每个table对应一个叶子结点，值为该表格的schema
+
 例如：当一个write的RPC到达ts，ts从rpc中取出token，对比内存中的表格schema.
