@@ -30,14 +30,12 @@ string user_name; // 目前仅有一个user_name字段，可以留作将来扩�
 解决方案：
 
 1. master可以在内存中保存一份，每个RPC请求查内存数据就可以决定是否允许操作；
-1. ts不能在每个RPC请求到达时查meta表，因为性能太差。ts可以读一次meta表，然后缓存下来。
-
-这样又带来一个问题：**缓存的更新与一致性**
+1. ts不能在每个RPC请求到达时查meta表，因为性能太差。
 
 解决方案：
 
 （表格ACL和用户信息）副本由master写入nexus或zk，可以预见数据量不会太大。
-Ts对以上数据执行watch，只有在更新时才会重新访问meta表，或者向master请求数据？
+Ts对以上数据执行watch，在更新时向nexus或zk请求新数据，或者向master请求数据？
 
 nexus/zk中存储：
 
