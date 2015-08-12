@@ -3,14 +3,29 @@
 # 表格的访问控制信息在表格的schema中
 ```
 TableSchema {
-repeated String who_can_read;
-repeated String who_can_write;
-repeated String who_can_admin; // disable, delete, drop, update
+String read_group;  // 此处存储group name
+String write_group; // ? 单个group就OK，不需要支持多个组？
+String admin_group; // disable, delete, drop, update
+}
+```
+
+e.g.
+
+```
+linkbase {
+read_group  reader;
+write_group writer;
+admin_group admin;
 }
 ```
 
 # 用户信息存在meta表中
-每个用户都对应一个唯一的token，这个token会存在于RPC请求中，token用于决定用户身份（此RPC请求是张三还是李四发起的）。
+
+** token -> user_name -> group **
+
+每个用户都对应一个唯一的token，这个token会存在于RPC请求中，
+token用于决定用户身份（此RPC请求是张三还是李四发起的），再将user映射到group中，
+user所属的group将决定它的具体权限（如是否有权限写linkbase）。
 
 **Key**: ~token
 
@@ -18,28 +33,36 @@ repeated String who_can_admin; // disable, delete, drop, update
 
 ```
 message {
-string user_name; // 目前仅有一个user_name字段，可以留作将来扩展
+string user_name;
+repeated string group_name;
 }
 ```
 
+master在内存中维护`token->user`和`user->group`的映射，在读取meta表时初始化。
+
 # 访问控制
 表格ACL和用户信息持久化存储在meta表中。
-
-这样带来一个问题：**性能**
-
-解决方案：
 
 1. master可以在内存中保存一份，每个RPC请求查内存数据就可以决定是否允许操作；
 1. ts不能在每个RPC请求到达时查meta表，因为性能太差。
 
 解决方案：
+1. master在表格ACL和用户信息变更时通知ts
+2. master在表格ACL和用户信息变更时写到nexus或zk上，ts对以上数据执行watch以更新
 
-（表格ACL和用户信息）副本由master写入nexus或zk，可以预见数据量不会太大。
-Ts对以上数据执行watch，在更新时向nexus或zk请求新数据，或者向master请求数据？
+方案1. master直接通知ts
+信息的初始化：ts加入集群后master通知ts；
+信息的更新：master在表格ACL和用户信息变更时通知ts
 
-nexus/zk中存储：
+优点：简单直白，rpc+内存操作
+不足：
+通知ts失败了：1. rpc不通；2.ts返回失败
 
-1. acl目录下有一个叶子结点user，存储所有用户信息；
-1. acl目录下再有一个tables目录结点，其下很多子结点，每个table对应一个叶子结点，值为该表格的schema
+方案2. master写到nexus或zk
+信息的初始化：用户信息在ts初始化时获取，表格信息在load时获取（只获取需要的表格信息）
+信息的更新：watch-更新
 
-例如：当一个write的RPC到达ts，ts从rpc中取出token，对比内存中的表格schema.
+1. acl目录下有一个叶子结点user，存储所有用户信息；如果用户数量较多，可以优化。
+1. acl目录下再有一个tables目录结点，其下很多子结点，每个table对应一个叶子结点，值为该表格的schema.
+
+例如：当一个write的RPC到达ts，ts从rpc中取出token，影射到group，对比内存中的表格schema.
