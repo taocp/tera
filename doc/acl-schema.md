@@ -80,18 +80,24 @@ master在内存中维护`token->user`和`user->group`的映射，在读取meta�
 
 设置表格的读group组：
 
+```
 ./teracli acl table-read table-name read-group-name
+```
 
 write/admin类同
 
 将user添加到group中：
 
+```
 ./teracli acl addtogroup user-name group-name
+```
 
 从group中删除类同
 
 创建用户：
 
+```
 ./teracli acl adduser user password
+```
 
 删除用户类同
