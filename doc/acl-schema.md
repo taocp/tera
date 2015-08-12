@@ -4,7 +4,7 @@
 ```
 TableSchema {
 String read_group;  // 此处存储group name
-String write_group; // ? 单个group就OK，不需要支持多个组？
+String write_group;
 String admin_group; // disable, delete, drop, update
 }
 ```
@@ -21,7 +21,7 @@ admin_group admin;
 
 # 用户信息存在meta表中
 
-** token -> user_name -> group **
+**token -> user_name ->group**
 
 每个用户都对应一个唯一的token，这个token会存在于RPC请求中，
 token用于决定用户身份（此RPC请求是张三还是李四发起的），再将user映射到group中，
@@ -75,3 +75,23 @@ master在内存中维护`token->user`和`user->group`的映射，在读取meta�
 不足：实现起来有点复杂？有很多和nexus/zk交互的问题
 
 例如：当一个write的RPC到达ts，ts从rpc中取出token，影射到user，再映射到group，对比内存中的表格schema.
+
+# 用户接口
+
+设置表格的读group组：
+
+./teracli acl table-read table-name read-group-name
+
+write/admin类同
+
+将user添加到group中：
+
+./teracli acl addtogroup user-name group-name
+
+从group中删除类同
+
+创建用户：
+
+./teracli acl adduser user password
+
+删除用户类同
