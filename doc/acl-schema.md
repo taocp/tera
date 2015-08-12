@@ -27,13 +27,13 @@ admin_group admin;
 token用于决定用户身份（此RPC请求是张三还是李四发起的），再将user映射到group中，
 user所属的group将决定它的具体权限（如是否有权限写linkbase）。
 
-**Key**: ~token
+**Key**: ~user_name
 
 **Value**: 是一个pb结构
 
 ```
 message {
-string user_name;
+string token;
 repeated string group_name;
 }
 ```
@@ -47,22 +47,31 @@ master在内存中维护`token->user`和`user->group`的映射，在读取meta�
 1. ts不能在每个RPC请求到达时查meta表，因为性能太差。
 
 解决方案：
+
 1. master在表格ACL和用户信息变更时通知ts
-2. master在表格ACL和用户信息变更时写到nexus或zk上，ts对以上数据执行watch以更新
+1. master在表格ACL和用户信息变更时写到nexus或zk上，ts对以上数据执行watch以更新（bigtable和hbase的方案）
 
 方案1. master直接通知ts
+
 信息的初始化：ts加入集群后master通知ts；
+
 信息的更新：master在表格ACL和用户信息变更时通知ts
 
 优点：简单直白，rpc+内存操作
-不足：
-通知ts失败了：1. rpc不通；2.ts返回失败
+
+不足：哪些信息该往哪些ts上推送的逻辑由master实现，加大master复杂度？
 
 方案2. master写到nexus或zk
+
 信息的初始化：用户信息在ts初始化时获取，表格信息在load时获取（只获取需要的表格信息）
+
 信息的更新：watch-更新
 
 1. acl目录下有一个叶子结点user，存储所有用户信息；如果用户数量较多，可以优化。
 1. acl目录下再有一个tables目录结点，其下很多子结点，每个table对应一个叶子结点，值为该表格的schema.
 
-例如：当一个write的RPC到达ts，ts从rpc中取出token，影射到group，对比内存中的表格schema.
+优点：master只负责更新信息到nexus/zk，ts按需自取，主要逻辑由ts实现
+
+不足：实现起来有点复杂？有很多和nexus/zk交互的问题
+
+例如：当一个write的RPC到达ts，ts从rpc中取出token，影射到user，再映射到group，对比内存中的表格schema.
