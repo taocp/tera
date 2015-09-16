@@ -326,7 +326,7 @@ struct ReadOptions {
         db_opt(db_option) {
   }
   ReadOptions() {
-    *this = ReadOptions(NULL);
+    *this = ReadOptions(new Options());
   }
 };
 
