@@ -44,6 +44,7 @@ DEFINE_int32(tera_client_scan_package_size, 1024, "the package size (in KB) of e
 DEFINE_bool(tera_client_scan_async_enabled, false, "enable the streaming scan mode");
 
 DEFINE_int64(snapshot, 0, "read | scan snapshot");
+DEFINE_string(rollback_switch, "close", "Pandora's box, do not open");
 
 volatile int32_t g_start_time = 0;
 volatile int32_t g_end_time = 0;
@@ -183,7 +184,7 @@ int32_t CreateOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     TableDescriptor table_desc;
     std::vector<std::string> delimiters;
     std::string schema = argv[2];
-    if (!ParseSchema(schema, &table_desc)) {
+    if (!ParseTableSchema(schema, &table_desc)) {
         LOG(ERROR) << "fail to parse input table schema.";
         return -1;
     }
@@ -230,22 +231,13 @@ int32_t CreateByFileOp(Client* client, int32_t argc, char** argv, ErrorCode* err
         return -1;
     }
 
-    std::ifstream fin(argv[2]);
-    std::string schema;
-    std::vector<std::string> delimiters;
-    if (fin.good()) {
-        std::string str;
-        while (fin >> str) {
-            schema.append(str);
-        }
-    }
-
     TableDescriptor table_desc;
-    if (!ParseSchema(schema, &table_desc)) {
+    if (!ParseTableSchemaFile(argv[2], &table_desc)) {
         LOG(ERROR) << "fail to parse input table schema.";
         return -1;
     }
 
+    std::vector<std::string> delimiters;
     if (argc == 4) {
         std::ifstream fin(argv[3]);
         if (fin.fail()) {
@@ -1759,20 +1751,23 @@ int32_t SnapshotOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     std::string tablename = argv[2];
     uint64_t snapshot = 0;
     if (argc == 5 && strcmp(argv[3], "del") == 0) {
-        std::stringstream is;
-        is << std::string(argv[4]);
-        is >> snapshot;
-        if (!client->DelSnapshot(tablename, snapshot, err)) {
-            LOG(ERROR) << "fail to del snapshot: " << snapshot << " ," << err->GetReason();
+        if (!client->DelSnapshot(tablename, FLAGS_snapshot, err)) {
+            LOG(ERROR) << "fail to del snapshot: " << FLAGS_snapshot << " ," << err->GetReason();
             return -1;
         }
         std::cout << "Del snapshot " << snapshot << std::endl;
-    } else if (strcmp(argv[3], "create") == 0 ) {
+    } else if (strcmp(argv[3], "create") == 0) {
         if (!client->GetSnapshot(tablename, &snapshot, err)) {
             LOG(ERROR) << "fail to get snapshot: " << err->GetReason();
             return -1;
         }
         std::cout << "new snapshot: " << snapshot << std::endl;
+    }  else if (FLAGS_rollback_switch == "open" && strcmp(argv[3], "rollback") == 0) {
+        if (!client->Rollback(tablename, FLAGS_snapshot, err)) {
+            LOG(ERROR) << "fail to rollback to snapshot: " << err->GetReason();
+            return -1;
+        }
+        std::cout << "rollback to snapshot: " << FLAGS_snapshot << std::endl;
     } else {
         Usage(argv[0]);
         return -1;
@@ -1920,11 +1915,11 @@ int32_t RenameOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
     std::string old_table_name = argv[2];
     std::string new_table_name = argv[3];
     if (!client->Rename(old_table_name, new_table_name, err)) {
-        LOG(ERROR) << "fail to rename table: " 
+        LOG(ERROR) << "fail to rename table: "
                    << old_table_name << " -> " << new_table_name << std::endl;
         return -1;
     }
-    std::cout << "rename OK: " << old_table_name 
+    std::cout << "rename OK: " << old_table_name
               << " -> " << new_table_name << std::endl;
     return 0;
 }
