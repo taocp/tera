@@ -62,9 +62,7 @@ PROGRAM = tera_main teracli teramo
 LIBRARY = libtera.a
 JNILIBRARY = libjni_tera.so
 BENCHMARK = tera_bench tera_mark
-TESTS = \
-	prop_tree_test \
-	tprinter_test
+TESTS = prop_tree_test tprinter_test
 
 .PHONY: all clean cleanall test
 
