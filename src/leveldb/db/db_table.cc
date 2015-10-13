@@ -296,6 +296,7 @@ Status DBTable::Init() {
         if (s.ok()) {
             MutexLock lock(&impl->mutex_);
             s = impl->versions_->LogAndApply(lg_edits[i], &impl->mutex_);
+            impl->SchedulePendingCompaction();
             if (s.ok()) {
                 impl->DeleteObsoleteFiles();
                 impl->MaybeScheduleCompaction();
