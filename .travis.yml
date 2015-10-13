@@ -53,5 +53,4 @@ before_script:
 
 script:
     - make -j4
-    - export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
     - make check
