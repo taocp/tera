@@ -14,6 +14,7 @@
 #include "db/db_table.h"
 #include "db/dbformat.h"
 #include "db/log_writer.h"
+#include "db/version_set.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "port/port.h"
@@ -111,7 +112,7 @@ class DBImpl : public DB {
   void MaybeIgnoreError(Status* s) const;
 
   // Delete any unneeded files and stale in-memory entries.
-  void DeleteObsoleteFiles();
+  void DeleteObsoleteFiles(Compaction *c);
 
   // Compact the in-memory write buffer to disk.  Switches to a new
   // log-file/memtable and writes a new descriptor iff successful.

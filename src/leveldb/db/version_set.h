@@ -242,8 +242,8 @@ class VersionSet {
   bool FilesInCompaction(const std::vector<FileMetaData*>& files);
   void ScoreMatrix(std::multimap<double, int>& amap);
 
-  bool RangeInCompaction(const InternalKey* smallest, 
-                         const InternalKey* largest, 
+  bool RangeInCompaction(const InternalKey* smallest,
+                         const InternalKey* largest,
                          int level);
   bool PickCompactionOnLevel(Compaction* c, int level);
   void SetLevel0BeingCompacted(bool b) { level0_being_compacted_ = b; }
@@ -406,6 +406,9 @@ class Compaction {
   }
 
   void SetInputsFilesBeingCompacted(bool mark);
+
+  // save inputs_[0] & inputs_[1] to input
+  void GetInputSst(std::vector<uint64_t>& input);
 
  private:
   friend class Version;

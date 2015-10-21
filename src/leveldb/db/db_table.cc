@@ -298,7 +298,7 @@ Status DBTable::Init() {
             s = impl->versions_->LogAndApply(lg_edits[i], &impl->mutex_);
             impl->SchedulePendingCompaction();
             if (s.ok()) {
-                impl->DeleteObsoleteFiles();
+                //impl->DeleteObsoleteFiles();
                 impl->MaybeScheduleCompaction();
             } else {
                 Log(options_.info_log, "[%s] Fail to modify manifest of lg %d",

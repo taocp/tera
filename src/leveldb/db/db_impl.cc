@@ -295,7 +295,7 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
   }
 }
 
-void DBImpl::DeleteObsoleteFiles() {
+void DBImpl::DeleteObsoleteFiles(Compaction *c) {
   if (!bg_error_.ok()) {
     // After a background error, we don't know whether a new version may
     // or may not have been committed, so we cannot safely garbage collect.
@@ -305,6 +305,11 @@ void DBImpl::DeleteObsoleteFiles() {
   // Make a set of all of the live files
   std::set<uint64_t> live = pending_outputs_;
   versions_->AddLiveFiles(&live);
+
+  std::vector<uint64_t> input_sst;
+  if (c != NULL) {
+    c->GetInputSst(input_sst);
+  }
 
   // manifest file set, keep latest 3 manifest files for backup
   std::set<std::string> manifest_set;
@@ -339,8 +344,11 @@ void DBImpl::DeleteObsoleteFiles() {
               }
           }
           break;
-        case kTableFile:
-          keep = (live.find(BuildFullFileNumber(dbname_, number)) != live.end());
+        case kTableFile: {
+            uint64_t n = BuildFullFileNumber(dbname_, number);
+            keep = ((live.find(n) != live.end())
+                    || (find(input_sst.begin(), input_sst.end(), n) == input_sst.end()));
+          }
           break;
         case kTempFile:
           // Any temp files that are currently being written to must
@@ -866,8 +874,8 @@ void DBImpl::BGWork(void* task) {
 }
 
 void DBImpl::BackgroundCall(CompactTaskInfo* task) {
-  Log(options_.info_log, "[%s] BackgroundCall, background-count:%d", 
-          dbname_.c_str(), bg_compaction_scheduled_count_);
+  Log(options_.info_log, "[%s] BackgroundCall, background-count:%d",
+      dbname_.c_str(), bg_compaction_scheduled_count_);
   MutexLock l(&mutex_);
   assert(bg_compaction_scheduled_count_ > 0);
   if (!shutting_down_.Acquire_Load()) {
@@ -939,7 +947,7 @@ Status DBImpl::BackgroundCompaction() {
 
   Status status;
   if (c == NULL) {
-    Log(options_.info_log, "[debug] c is NULL");
+    Log(options_.info_log, "[%s] c is NULL", dbname_.c_str());
     // Nothing to do
   } else if (!is_manual && c->IsTrivialMove()) {
     // Move file to next level
@@ -963,10 +971,10 @@ Status DBImpl::BackgroundCompaction() {
     status = DoCompactionWork(compact);
     CleanupCompaction(compact);
     c->ReleaseInputs();
-    DeleteObsoleteFiles();
+    DeleteObsoleteFiles(c);
   }
   if (c!=NULL && c->level() == 0) {
-      Log(options_.info_log, "reset level0_being_compacted");
+      Log(options_.info_log, "[%s] reset level0_being_compacted", dbname_.c_str());
       versions_->SetLevel0BeingCompacted(false);
   }
   delete c;
@@ -1134,13 +1142,15 @@ void DBImpl::SchedulePendingCompaction() {
    std::multimap<double, int>::reverse_iterator rit = amap.rbegin();
    if ((rit != amap.rend()) && (rit->first >= 1.0)) {
      if ((rit->second == 0) && versions_->GetLevel0BeingCompacted()) {
-       Log(options_.info_log, "[debug] no concurrently compact on level0");
+       Log(options_.info_log, "[%s] no concurrently compact on level0", dbname_.c_str());
+       return;
      }
      unscheduled_compactions_++;
      MaybeScheduleCompaction();
-     Log(options_.info_log, "[debug] another level:%d score:%lf", rit->second, rit->first);
+     Log(options_.info_log, "[%s] another level:%d score:%lf",
+         dbname_.c_str(), rit->second, rit->first);
    } else {
-     Log(options_.info_log, "[debug] there is no more compaction to do");
+     Log(options_.info_log, "[%s] there is no more compaction to do", dbname_.c_str());
    }
 }
 
@@ -1353,7 +1363,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   double time_used = static_cast<double>(stats.micros);
   double compact_rate = (time_used == 0 ? -3.7 : compact->total_bytes/time_used);
   Log(options_.info_log,
-      "[%s] compacted to: %s, cost time:%ld, rate:%lf", dbname_.c_str(), 
+      "[%s] compacted to: %s, cost time:%ld, rate:%lf", dbname_.c_str(),
       versions_->LevelSummary(&tmp), stats.micros, compact_rate);
   return status;
 }
