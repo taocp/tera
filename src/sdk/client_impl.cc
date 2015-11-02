@@ -21,7 +21,6 @@
 #include "utils/crypt.h"
 #include "utils/utils_cmd.h"
 
-DECLARE_string(flagfile);
 DECLARE_string(tera_master_meta_table_name);
 DECLARE_string(tera_sdk_conf_file);
 DECLARE_string(tera_user_identity);
@@ -110,6 +109,10 @@ bool ClientImpl::CheckReturnValue(StatusCode status, std::string& reason, ErrorC
             reason = "permission denied.";
             err->SetFailed(ErrorCode::kNoAuth, reason);
             break;
+        case kTabletReady:
+            reason = "tablet is ready.";
+            err->SetFailed(ErrorCode::kOK, reason);
+            break;
         default:
             reason = "tera master is not ready, please wait..";
             err->SetFailed(ErrorCode::kSystem, reason);
@@ -136,6 +139,7 @@ bool ClientImpl::CreateTable(const TableDescriptor& desc,
     TableDescToSchema(desc, schema);
     schema->set_alias(desc.TableName());
     schema->set_name(internal_table_name);
+    schema->set_admin(_user_identity);
     // add delimiter
     size_t delim_num = tablet_delim.size();
     for (size_t i = 0; i < delim_num; ++i) {
@@ -206,7 +210,6 @@ bool ClientImpl::DeleteTable(string name, ErrorCode* err) {
         if (CheckReturnValue(response.status(), reason, err)) {
             return true;
         }
-        LOG(ERROR) << reason << "| status: " << StatusCodeToString(response.status());
     } else {
         reason = "rpc fail to delete table: " + name;
         LOG(ERROR) << reason;
@@ -334,7 +337,7 @@ bool ClientImpl::ChangePwd(const std::string& user,
     return OperateUser(updated_user, kChangePwd, null, err);
 }
 
-bool ClientImpl::ShowUser(const std::string& user, std::vector<std::string>& user_groups, 
+bool ClientImpl::ShowUser(const std::string& user, std::vector<std::string>& user_groups,
                           ErrorCode* err) {
     UserInfo user_info;
     user_info.set_user_name(user);
@@ -584,9 +587,11 @@ bool ClientImpl::ShowTablesInfo(TableMetaList* table_list,
                 tablet_list->add_meta()->CopyFrom(response.tablet_meta_list().meta(i));
                 tablet_list->add_counter()->CopyFrom(response.tablet_meta_list().counter(i));
                 if (i == response.tablet_meta_list().meta_size() - 1 ) {
+                    std::string prev_table_name = start_table_name;
                     start_table_name = response.tablet_meta_list().meta(i).table_name();
                     std::string last_key = response.tablet_meta_list().meta(i).key_range().key_start();
-                    if (last_key <= start_tablet_key) {
+                    if (prev_table_name > start_table_name
+                        || (prev_table_name == start_table_name && last_key <= start_tablet_key)) {
                         LOG(WARNING) << "the master has older version";
                         has_more = false;
                         break;
@@ -803,16 +808,24 @@ bool ClientImpl::DelSnapshot(const string& name, uint64_t snapshot, ErrorCode* e
     return false;
 }
 
-bool ClientImpl::Rollback(const string& name, uint64_t snapshot, ErrorCode* err) {
+bool ClientImpl::Rollback(const string& name, uint64_t snapshot,
+                          const std::string& rollback_name, ErrorCode* err) {
     master::MasterClient master_client(_cluster->MasterAddr());
 
+    std::string internal_table_name;
+    if (!GetInternalTableName(name, err, &internal_table_name)) {
+        LOG(ERROR) << "faild to scan meta schema";
+        return false;
+    }
     RollbackRequest request;
     RollbackResponse response;
     request.set_sequence_id(0);
-    request.set_table_name(name);
+    request.set_table_name(internal_table_name);
     request.set_snapshot_id(snapshot);
+    request.set_rollback_name(rollback_name);
+    std::cout << name << " " << rollback_name << std::endl;
 
-    if (master_client.Rollback(&request, &response)) {
+    if (master_client.GetRollback(&request, &response)) {
         if (response.status() == kMasterOk) {
             std::cout << name << " rollback to snapshot sucessfully" << std::endl;
             return true;
@@ -970,43 +983,56 @@ bool ClientImpl::ParseTabletEntry(const TabletMeta& meta, std::vector<TabletInfo
 static Mutex g_mutex;
 static bool g_is_glog_init = false;
 
+static int SpecifiedFlagfileCount(const std::string& confpath) {
+    int count = 0;
+    if (!confpath.empty()) {
+        count++;
+    }
+    if (!FLAGS_tera_sdk_conf_file.empty()) {
+        count++;
+    }
+    return count;
+}
+
 static int InitFlags(const std::string& confpath, const std::string& log_prefix) {
     MutexLock locker(&g_mutex);
     // search conf file, priority:
-    //   user-specified > ./tera.flag > ../conf/tera.flag > env-var
-    if (!FLAGS_flagfile.empty()) {
-        // do nothing
-    } else if (!confpath.empty() && IsExist(confpath)) {
-        FLAGS_flagfile = confpath;
-    } else if (!FLAGS_tera_sdk_conf_file.empty() && IsExist(confpath)) {
-        FLAGS_flagfile = FLAGS_tera_sdk_conf_file;
-    } else if (IsExist("./tera.flag")) {
-        FLAGS_flagfile = "./tera.flag";
-    } else if (IsExist("../conf/tera.flag")) {
-        FLAGS_flagfile = "../conf/tera.flag";
-    } else if (IsExist(utils::GetValueFromeEnv("TERA_CONF"))) {
-        FLAGS_flagfile = utils::GetValueFromeEnv("TERA_CONF");
-    } else {
-        LOG(ERROR) << "config file not found";
+    //   user-specified > ./tera.flag > ../conf/tera.flag
+    std::string flagfile("--flagfile=");
+    if (SpecifiedFlagfileCount(confpath) > 1) {
+        LOG(ERROR) << "should specify no more than one config file";
         return -1;
     }
 
-    // init user identity & role
-    std::string cur_identity = utils::GetValueFromeEnv("USER");
-    if (cur_identity.empty()) {
-        cur_identity = "other";
-    }
-    if (FLAGS_tera_user_identity.empty()) {
-        FLAGS_tera_user_identity = cur_identity;
+    if (!confpath.empty() && IsExist(confpath)){
+        flagfile += confpath;
+    } else if(!confpath.empty() && !IsExist(confpath)){
+        LOG(ERROR) << "specified config file(function argument) not found";
+        return -1;
+    } else if (!FLAGS_tera_sdk_conf_file.empty() && IsExist(confpath)) {
+        flagfile += FLAGS_tera_sdk_conf_file;
+    } else if (!FLAGS_tera_sdk_conf_file.empty() && !IsExist(confpath)) {
+        LOG(ERROR) << "specified config file(FLAGS_tera_sdk_conf_file) not found";
+        return -1;
+    } else if (IsExist("./tera.flag")) {
+        flagfile += "./tera.flag";
+    } else if (IsExist("../conf/tera.flag")) {
+        flagfile += "../conf/tera.flag";
+    } else if (IsExist(utils::GetValueFromEnv("TERA_CONF"))) {
+        flagfile += utils::GetValueFromEnv("TERA_CONF");
+    } else {
+        LOG(ERROR) << "hasn't specify the flagfile, but default config file not found";
+        return -1;
     }
 
-    int argc = 1;
-    char** argv = new char*[2];
-    argv[0] = (char*)"dummy";
-    argv[1] = NULL;
+    int argc = 2;
+    char** argv = new char*[3];
+    argv[0] = const_cast<char*>("dummy");
+    argv[1] = const_cast<char*>(flagfile.c_str());
+    argv[2] = NULL;
 
-    // the gflags will get flags from FLAGS_flagfile
-    ::google::ParseCommandLineFlags(&argc, &argv, true);
+    // the gflags will get flags from falgfile
+    ::google::ParseCommandLineFlags(&argc, &argv, false);
     if (!g_is_glog_init) {
         ::google::InitGoogleLogging(log_prefix.c_str());
         utils::SetupLog(log_prefix);
@@ -1015,7 +1041,7 @@ static int InitFlags(const std::string& confpath, const std::string& log_prefix)
     delete[] argv;
 
     LOG(INFO) << "USER = " << FLAGS_tera_user_identity;
-    LOG(INFO) << "Load config file: " << FLAGS_flagfile;
+    LOG(INFO) << "Load config file: " << flagfile;
     return 0;
 }
 
