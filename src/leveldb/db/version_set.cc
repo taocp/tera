@@ -1676,6 +1676,7 @@ Compaction* VersionSet::PickMultiThreadCompaction() {
       break;
     }
     delete c;
+    c = NULL;
   }
 
   if (!found_compaction) {
@@ -1702,12 +1703,17 @@ Compaction* VersionSet::PickMultiThreadCompaction() {
     GetRange(c->inputs_[0], &smallest, &largest);
     if (RangeInCompaction(&smallest, &largest, level)) {
       Log(options_->info_log, "[%s] level-1 in compaction", dbname_.c_str());
+      delete c;
       return NULL;
     }
-    level0_being_compacted_ = true;
   }
 
   SetupOtherInputs(c);
+  if (FilesInCompaction(c->inputs_[0]) || FilesInCompaction(c->inputs_[1])) {
+      Log(options_->info_log, "[%s] resolve a conflict mul-compaction", dbname_.c_str());
+      delete c;
+      return NULL;
+  }
   std::ostringstream oss;
   for (size_t i = 0; i < c->inputs_[0].size(); i++) {
     oss << static_cast<uint32_t>(c->inputs_[0][i]->number & 0xffffffff) << " ";
@@ -1720,7 +1726,10 @@ Compaction* VersionSet::PickMultiThreadCompaction() {
       dbname_.c_str(),
       c->inputs_[0].size(), c->level(),
       c->inputs_[1].size(), c->level()+1, oss.str().c_str());
-  c->SetInputsFilesBeingCompacted(true);
+  c->SetInputsFilesBeingCompacted(true, dbname_);
+  if (level == 0) {
+    level0_being_compacted_ = true;
+  }
   return c;
 }
 
@@ -1988,8 +1997,13 @@ Compaction* VersionSet::CompactRange(
     MaxFileSizeForLevel(level + 1, current_->vset_->options_->sst_size);
   c->inputs_[0] = inputs;
   SetupOtherInputs(c);
+  if (FilesInCompaction(c->inputs_[0]) || FilesInCompaction(c->inputs_[1])) {
+      Log(options_->info_log, "[%s] resolve a conflict compaction", dbname_.c_str());
+      delete c;
+      return NULL;
+  }
 
-  c->SetInputsFilesBeingCompacted(true);
+  c->SetInputsFilesBeingCompacted(true, dbname_);
   if (level == 0) {
       level0_being_compacted_ = true;
   }
@@ -2015,13 +2029,14 @@ Compaction::~Compaction() {
   }
 }
 
-void Compaction::SetInputsFilesBeingCompacted(bool new_mark) {
+void Compaction::SetInputsFilesBeingCompacted(bool new_mark, const std::string& dbname) {
   for (int which = 0; which < 2; which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
       bool old_mark = inputs_[which][i]->being_compacted;
       if (old_mark == new_mark) {
         uint32_t file_no = static_cast<uint32_t>(inputs_[which][i]->number & 0xffffffff);
-        fprintf(stderr, "file_no:#%08u being_compacted status:%d", file_no, new_mark);
+        fprintf(stderr, "[%s] file_no:#%08u being_compacted status:%d",
+                dbname.c_str(), file_no, new_mark);
         abort();
       }
       inputs_[which][i]->being_compacted = new_mark;

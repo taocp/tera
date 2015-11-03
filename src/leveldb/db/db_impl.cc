@@ -152,7 +152,7 @@ DBImpl::DBImpl(const Options& options, const std::string& dbname)
       bg_schedule_id_(0),
       imm_dump_(false),
       unscheduled_compactions_(0),
-      max_background_compactions_(10), // TODO(taocipian) configurable
+      max_background_compactions_(3), // TODO(taocipian) configurable
       manual_compaction_(NULL),
       consecutive_compaction_errors_(0),
       flush_on_destroy_(false) {

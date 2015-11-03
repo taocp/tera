@@ -405,7 +405,7 @@ class Compaction {
     drop_lower_bound_ = lower_bound;
   }
 
-  void SetInputsFilesBeingCompacted(bool mark);
+  void SetInputsFilesBeingCompacted(bool mark, const std::string& dbname);
 
   // save inputs_[0] & inputs_[1] to input
   void GetInputSst(std::vector<uint64_t>& input);
