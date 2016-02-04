@@ -30,6 +30,7 @@ struct FileMetaData {
   InternalKey largest;        // Largest internal key served by table
   bool smallest_fake;         // smallest is not real, have out-of-range keys
   bool largest_fake;          // largest is not real, have out-of-range keys
+  bool being_compacted;       // true if the file is currently being compacted
 
   FileMetaData() :
       refs(0),
@@ -37,7 +38,8 @@ struct FileMetaData {
       file_size(0),
       data_size(0),
       smallest_fake(false),
-      largest_fake(false) { }
+      largest_fake(false),
+      being_compacted(false) { }
 };
 
 class VersionEdit {
@@ -154,6 +156,7 @@ class VersionEdit {
 
   void AddFile(int level, const FileMetaData& f) {
     new_files_.push_back(std::make_pair(level, f));
+    new_files_.back().second.being_compacted = false;
   }
 
   // Delete the specified "file" from the specified "level".
