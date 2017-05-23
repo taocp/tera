@@ -1048,6 +1048,8 @@ int32_t DeleteOp(Client* client, int32_t argc, std::string* argv, ErrorCode* err
     return 0;
 }
 
+
+std::string g_real_end_key;
 int32_t ScanRange(TablePtr& table, ScanDescriptor& desc, ErrorCode* err) {
     desc.SetBufferSize(FLAGS_tera_client_scan_package_size << 10);
     desc.SetAsync(FLAGS_tera_sdk_batch_scan_enabled);
@@ -1065,6 +1067,12 @@ int32_t ScanRange(TablePtr& table, ScanDescriptor& desc, ErrorCode* err) {
     while (!result_stream->Done(err)) {
         if (result_stream->RowName() != last_key) {
             found_num++;
+        }
+        LOG(INFO) << "rs:" << result_stream->RowName()
+            << " g_real:" << g_real_end_key;
+        if ((g_real_end_key != "") && (result_stream->RowName() >= g_real_end_key)) {
+            LOG(ERROR) << "break for real_endk_key:[" << g_real_end_key << "]";
+            break;
         }
         last_key = result_stream->RowName();
 
@@ -1122,9 +1130,10 @@ int32_t ScanOp(Client* client, int32_t argc, std::string* argv, ErrorCode* err) 
     }
 
     std::string start_rowkey = argv[3];
-    std::string end_rowkey = argv[4];
+    g_real_end_key = argv[4];
+
     ScanDescriptor desc(start_rowkey);
-    desc.SetEnd(end_rowkey);
+    desc.SetEnd("");
     if (op == "scanallv") {
         desc.SetMaxVersions(std::numeric_limits<int>::max());
     }
